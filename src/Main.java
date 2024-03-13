@@ -2,6 +2,7 @@ import java.util.Scanner;
 public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
+        Calculadora calculadora = new Calculadora(); // creamos una calculadora
         // iniciamos variables
         double num1 = 0;
         double num2 = 0;
@@ -25,6 +26,8 @@ public class Main {
                     num1 = scanner.nextDouble();
                     System.out.println("Introduce el segundo numero: ");
                     num2 = scanner.nextDouble();
+                    resultado = calculadora.sumar(num1, num2);
+                    System.out.println("Resultado: " + resultado);// resultado
                     break;
                 case 2:
                     // opción dos llama al metodo resta
@@ -33,6 +36,8 @@ public class Main {
                     num1 = scanner.nextDouble();
                     System.out.println("Introduce el segundo numero: ");
                     num2 = scanner.nextDouble();
+                    resultado = calculadora.restar(num1, num2);
+                    System.out.println("Resultado: " + resultado);// resultado
                     break;
                 case 3:
                     // opción tres llama al metodo multipliar
@@ -41,6 +46,8 @@ public class Main {
                     num1 = scanner.nextDouble();
                     System.out.println("Introduce el segundo numero: ");
                     num2 = scanner.nextDouble();
+                    resultado = calculadora.multiplicar(num1, num2);
+                    System.out.println("Resultado: " + resultado);// resultado
                     break;
                 case 4:
                     // opción cuatro llama al metodo dividir
@@ -49,6 +56,8 @@ public class Main {
                     num1 = scanner.nextDouble();
                     System.out.println("Introduce el segundo numero: ");
                     num2 = scanner.nextDouble();
+                    resultado = calculadora.dividir(num1, num2);
+                    System.out.println("Resultado: " + resultado);// resultado
                     break;
                 case 0:
                     // opción 0 cierra el programa
