@@ -67,4 +67,32 @@ class CalculadoraTest {
         Calculadora calculadora = new Calculadora();
         assertEquals(6.0, calculadora.restar(6.3, 0.3));
     }
+    // Pruebas para el método multiplicar
+    @Test
+    /**
+     * Método multiplicar multiplicar numeros enteros
+     */
+    public void testMultiplicar() {
+        Calculadora calculadora = new Calculadora();
+        assertEquals(6.0, calculadora.multiplicar(2.0, 3.0));
+    }
+
+    @Test
+
+    /**
+     * Método multiplicar multiplicar numeros decimales
+     */
+    public void testMultiplicarDecimales() {
+        Calculadora calculadora = new Calculadora();
+        assertEquals(4.6, calculadora.multiplicar(2.0, 2.3));
+    }
+
+    @Test
+    /**
+     * Método multiplicar multiplicar numeros entero por negativo
+     */
+    public void testMultiplicarNegativoPorPositivo() {
+        Calculadora calculadora = new Calculadora();
+        assertEquals(-6.0, calculadora.multiplicar(-2.0, 3.0));
+    }
 }
