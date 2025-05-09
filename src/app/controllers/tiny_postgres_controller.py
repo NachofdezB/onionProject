@@ -6,28 +6,35 @@
 
 # @ Create Time: 2025-05-05 10:30:50
 
-# @ Modified time: 2025-05-06 16:17:59
+# @ Modified time: 2025-09-06 16:17:59
 
-# @ Description: FastAPI router for managing RSS feeds using PostgreSQL
-# backend.
+# @ Description: This FastAPI router provides endpoints for managing RSS feed
+# data using a PostgreSQL backend.
+# The router includes the following functionalities:
+# 1. `POST /feeds`: Accepts an RSS feed URL, parses its content using the
+# feedparser library, and inserts its metadata (e.g., title, feed URL, and
+# site URL) into the PostgreSQL database.
+# 2. `GET /search-and-insert-rss`: Reads a list of URLs from a file and
+# processes them to extract and save RSS feed metadata into the database.
+# 3. `GET /feeds`: Retrieves a list of RSS feeds stored in the PostgreSQL
+# database, with an optional limit on the number of results.
+# This module is designed to handle the creation, search, and insertion of
+# RSS feeds and their metadata in a structured way, using asynchronous
+# database interactions.
 
 from fastapi import APIRouter, Request, HTTPException
-from app.scraping.sipder_rss import extraer_rss_y_guardar
+from app.scraping.sipder_rss import extract_rss_and_save
 from fastapi import APIRouter, Request, HTTPException, Query
 from typing import List
 from pydantic import HttpUrl
 from loguru import logger
 import feedparser
-
 from app.models.ttrss_postgre_db import (
     FeedCreateRequest,
     FeedResponse,
-    FeedUrlList,
-    get_entry_links,
     get_feeds_from_db,
     insert_feed_to_db
 )
-from app.scraping.sipder_rss import extraer_rss_y_guardar
 
 # Router configuration
 router = APIRouter(
@@ -49,12 +56,19 @@ async def enter_feed(
     """
     Parse an RSS feed URL and insert its metadata into the database.
 
+    This endpoint accepts an RSS feed URL, parses the feed's content,
+    and inserts its metadata (such as title and site URL) into a PostgreSQL database.
+
+    If the feed is successfully parsed and the entries are found,
+    the feed's metadata is saved to the database, and the response contains
+    the newly created feed's data.
+
     Args:
         request (Request): Incoming HTTP request object.
-        feed_url (HttpUrl): Validated URL of the RSS feed to be added.
+        feed_url (HttpUrl): The RSS feed URL to be processed.
 
     Returns:
-        FeedResponse: The newly created feed's data from the database.
+        FeedResponse: The metadata of the newly inserted feed.
     """
     logger.info("Attempting to create feed from URL: {}", feed_url)
 
@@ -116,12 +130,27 @@ async def enter_feed(
         )
 
 
-@router.get("/buscar-e-insertar-rss")
-async def buscar_e_insertar_rss(request: Request):
+@router.get("/search-and-insert-rss")
+async def search_and_insert_rss(request: Request) -> dict[str, str]:
+    """
+    Reads URLs from a file, processes them to extract RSS feeds, and stores
+    the feed metadata into the PostgreSQL database.
+
+    This endpoint triggers the process to read URLs from a predefined file,
+    attempts to extract RSS feed links, and saves the feed metadata into the
+    PostgreSQL database.
+
+    Args:
+        request (Request): The incoming HTTP request object.
+
+    Returns:
+        dict: A success message indicating that the feeds were processed.
+    """
     pool = request.app.state.pool
-    ruta_archivo = "src/app/static/docs/urls_ciberseguridad_ot_it.txt"
-    await extraer_rss_y_guardar(pool, ruta_archivo)
-    return {"status": "✅ Feeds procesados correctamente"}
+    file_path = "src/app/static/docs/urls_ciberseguridad_ot_it.txt"
+    await extract_rss_and_save(pool, file_path)
+    return {"status": "✅ Feeds successfully processed"}
+
 
 
 
@@ -133,12 +162,16 @@ async def list_feeds(
     """
     Retrieve a list of RSS feeds from the PostgreSQL database.
 
+    This endpoint retrieves up to a specified number of RSS feeds from the
+    PostgreSQL database. The maximum number of feeds returned can be controlled
+    via the `limit` query parameter.
+
     Args:
         request (Request): Incoming HTTP request object.
-        limit (int): Max number of feed records to return (default is 10).
+        limit (int): The number of feed records to return (default is 10).
 
     Returns:
-        List[FeedResponse]: List of FeedResponse objects in JSON format.
+        List[FeedResponse]: A list of RSS feed metadata in JSON format.
     """
     logger.info("Fetching up to {} feeds from database.", limit)
 
