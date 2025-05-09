@@ -1,11 +1,12 @@
-import psycopg2
-from scrapy.crawler import CrawlerProcess
 from scrapy.spiders import Spider
+from scrapy.crawler import CrawlerProcess
 from app.models.ttrss_postgre_db import get_entry_links
-import asyncio
+from multiprocessing import Process
+import time
+import logging
+from scrapy.utils.log import configure_logging
 
-
-# Clase base para spiders dinámicos
+# Clase base para spider dinámico
 def crear_spider_dinamico(urls):
     class SpiderDinamico(Spider):
         name = "spider_dinamico"
@@ -26,33 +27,45 @@ def crear_spider_dinamico(urls):
 
     return SpiderDinamico
 
+# Función que ejecuta el spider en un subproceso
+def correr_spider_dinamico(urls):
+    # Configura el logging para que no genere logs de Scrapy
+    configure_logging(install_root_handler=False)
+    logging.getLogger('scrapy').propagate = False
+    logging.getLogger().setLevel(logging.CRITICAL)
 
-# Función que ejecuta el spider con URLs desde la base de datos
-async def ejecutar_spider_dinamico_desde_db(pool):
-    try:
-        async with pool.acquire() as conn:
-            urls = await get_entry_links(conn)
+    SpiderDinamico = crear_spider_dinamico(urls)
 
-            if not urls:
-                print("No se encontraron URLs para procesar.")
-                return
+    process = CrawlerProcess(settings={
+        "LOG_ENABLED": False,  # Desactiva los logs de Scrapy explícitamente
+        "FEEDS": {
+            "resultado.json": {
+                "format": "json",
+                "overwrite": True,
+                "encoding": "utf8"
+            }
+        }
+    })
+    process.crawl(SpiderDinamico)
+    process.start()
 
-            print(f"Ejecutando spider con {len(urls)} URLs...")
+# Función que ejecuta el spider de forma continua
+def ejecutar_spider_dinamico_desde_db(pool):
+    async def run():
+        while True:
+            async with pool.acquire() as conn:
+                urls = await get_entry_links(conn)
+                if not urls:
+                    print("No se encontraron URLs para procesar.")
+                    return
 
-            SpiderDinamico = crear_spider_dinamico(urls)
+                # Ejecuta el proceso en segundo plano con multiprocessing
+                p = Process(target=correr_spider_dinamico, args=(urls,))
+                p.start()
+                p.join()  # Úsalo solo para esperar que el proceso termine, pero sigue el bucle
 
-            process = CrawlerProcess(settings={
-                "LOG_LEVEL": "ERROR",
-                "FEEDS": {
-                    "resultado.json": {
-                        "format": "json",
-                        "overwrite": True,
-                        "encoding": "utf8"
-                    }
-                }
-            })
-            process.crawl(SpiderDinamico)
-            await asyncio.to_thread(process.start)
+            # Espera un poco antes de volver a ejecutar el scraping
+            print("Esperando para la próxima ejecución...")
+            time.sleep(60)  # Espera 1 minuto antes de volver a ejecutar el scraping
 
-    except Exception as e:
-        print(f"Error al ejecutar el spider: {e}")
+    return run()

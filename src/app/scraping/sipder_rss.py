@@ -1,21 +1,19 @@
+# src/app/scraping/spider_rss.py
 import feedparser
-import asyncio
 from scrapy.crawler import CrawlerProcess
 from scrapy.spiders import Spider
-from scrapy.utils.log import configure_logging
 from app.models.ttrss_postgre_db import insert_feed_to_db, FeedCreateRequest
+from multiprocessing import Process, Queue
+from scrapy.utils.log import configure_logging
 
-# Función para leer las URLs desde un archivo
 def leer_urls_desde_archivo(ruta_archivo):
     try:
         with open(ruta_archivo, "r") as archivo:
-            urls = [linea.strip() for linea in archivo.readlines()]
-        return urls
+            return [linea.strip() for linea in archivo if linea.strip()]
     except Exception as e:
         print(f"Error al leer el archivo: {e}")
         return []
 
-# Crear el Spider para extraer los RSS
 def crear_spider_rss(urls, resultados):
     class SpiderRSS(Spider):
         name = "rss_spider"
@@ -25,9 +23,6 @@ def crear_spider_rss(urls, resultados):
             for link in response.css("link"):
                 href = link.attrib.get("href", "")
                 tipo = link.attrib.get("type", "")
-                rel = link.attrib.get("rel", "")
-
-                # Detectar feeds RSS o Atom
                 if "rss" in tipo or "atom" in tipo or "application/xml" in tipo:
                     full_url = response.urljoin(href)
                     if full_url not in resultados:
@@ -35,29 +30,29 @@ def crear_spider_rss(urls, resultados):
                         print(f"RSS encontrado: {full_url}")
     return SpiderRSS
 
-# Función para extraer RSS y guardar en la base de datos
+def correr_spider_rss(urls, queue):
+    configure_logging({'LOG_LEVEL': 'ERROR'})
+    resultados = []
+    spider = crear_spider_rss(urls, resultados)
+    process = CrawlerProcess()
+    process.crawl(spider)
+    process.start()
+    queue.put(resultados)
+
+# Función pública que se llama desde FastAPI
 async def extraer_rss_y_guardar(pool, archivo_urls):
     urls = leer_urls_desde_archivo(archivo_urls)
     if not urls:
         print("No se encontraron URLs para procesar.")
         return
 
-    resultados = []
-    SpiderRSS = crear_spider_rss(urls, resultados)
+    queue = Queue()
+    p = Process(target=correr_spider_rss, args=(urls, queue))
+    p.start()
+    p.join()
 
-    # Configuración de logging para Scrapy
-    configure_logging({'LOG_LEVEL': 'ERROR'})
-    process = CrawlerProcess()
+    resultados = queue.get()
 
-    # Iniciar el crawl de Scrapy en asyncio
-    process.crawl(SpiderRSS)
-
-    # Ejecutar el proceso Scrapy de manera asíncrona usando asyncio
-    await asyncio.to_thread(process.start)
-
-    print(f"\nSe encontraron {len(resultados)} feeds RSS. Validando e insertando...")
-
-    # Guardar los resultados en la base de datos
     async with pool.acquire() as conn:
         for feed_url in resultados:
             try:
@@ -78,7 +73,7 @@ async def extraer_rss_y_guardar(pool, archivo_urls):
                 )
 
                 await insert_feed_to_db(conn, feed_data)
-                print(f"✅ Feed insertado en DB: {feed_url}")
+                print(f"✅ Feed insertado: {feed_url}")
 
             except Exception as e:
                 print(f"❌ Error procesando {feed_url}: {e}")

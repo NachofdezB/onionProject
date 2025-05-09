@@ -11,6 +11,8 @@
 # @ Description: FastAPI router for managing RSS feeds using PostgreSQL
 # backend.
 
+from fastapi import APIRouter, Request, HTTPException
+from app.scraping.sipder_rss import extraer_rss_y_guardar
 from fastapi import APIRouter, Request, HTTPException, Query
 from typing import List
 from pydantic import HttpUrl
@@ -113,12 +115,14 @@ async def enter_feed(
             detail=f"Error inserting feed: {str(e)}"
         )
 
+
 @router.get("/buscar-e-insertar-rss")
 async def buscar_e_insertar_rss(request: Request):
     pool = request.app.state.pool
-    ruta_archivo = "src/app/static/docs/urls_ciberseguridad_ot_it.txt"  # Ajusta la ruta si el archivo está en otro lugar
+    ruta_archivo = "src/app/static/docs/urls_ciberseguridad_ot_it.txt"
     await extraer_rss_y_guardar(pool, ruta_archivo)
     return {"status": "✅ Feeds procesados correctamente"}
+
 
 
 @router.get("/feeds", response_model=List[FeedResponse])
