@@ -28,6 +28,7 @@ import time
 import logging
 from scrapy.utils.log import configure_logging
 from typing import Type, Coroutine, Any
+from loguru import logger
 
 def create_dynamic_spider(urls)-> Type[Spider]:
     """
@@ -143,7 +144,7 @@ def run_dynamic_spider_from_db(pool)-> Coroutine[Any, Any, None]:
                 p.start()
                 p.join()
 
-            print("Waiting for next run...")
-            time.sleep(60)
+            logger.info("Waiting for next run...")
+            time.sleep(5)
 
     return run()

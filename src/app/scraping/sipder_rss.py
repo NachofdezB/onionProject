@@ -25,6 +25,7 @@ from app.models.ttrss_postgre_db import insert_feed_to_db, FeedCreateRequest
 from multiprocessing import Process, Queue
 from scrapy.utils.log import configure_logging
 from typing import List, Type
+from loguru import logger
 
 def read_urls_from_file(file_path) -> List[str] | List:
     """
@@ -46,7 +47,7 @@ def read_urls_from_file(file_path) -> List[str] | List:
         with open(file_path, "r") as file:
             return [line.strip() for line in file if line.strip()]
     except Exception as e:
-        print(f"Error reading file: {e}")
+        logger.error(f"Error reading file: {e}")
         return []
 
 def create_rss_spider(urls, results)-> Type[Spider]:
@@ -80,7 +81,7 @@ def create_rss_spider(urls, results)-> Type[Spider]:
                     full_url = response.urljoin(href)
                     if full_url not in results:
                         results.append(full_url)
-                        print(f"RSS found: {full_url}")
+                        logger.info(f"RSS found: {full_url}")
     return RSSSpider
 
 def run_rss_spider(urls, queue) -> None:
@@ -156,7 +157,7 @@ async def extract_rss_and_save(pool, file_path) -> None:
             try:
                 feed = feedparser.parse(feed_url)
                 if not feed.entries:
-                    print(f"⚠️  No entries found in {feed_url}")
+                    logger.warning(f"⚠️  No entries found in {feed_url}")
                     continue
 
                 title = feed.feed.get("title", "Untitled")
@@ -171,7 +172,7 @@ async def extract_rss_and_save(pool, file_path) -> None:
                 )
 
                 await insert_feed_to_db(conn, feed_data)
-                print(f"✅ Feed inserted: {feed_url}")
+                logger.info(f"✅ Feed inserted: {feed_url}")
 
             except Exception as e:
-                print(f"❌ Error processing {feed_url}: {e}")
+                logger.error(f"❌ Error processing {feed_url}: {e}")
