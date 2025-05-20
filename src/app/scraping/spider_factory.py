@@ -38,13 +38,7 @@ from loguru import logger
 LOCKFILE = "result.json.lock"
 # Output JSON file name
 OUTPUT_FILE = "result.json"
-db_config = {
-    "user": "postgres",
-    "password": "password123",
-    "database": "postgres",
-    "host": "127.0.0.1",
-    "port": 5432
-}
+
 
 
 def write_json_array_with_lock(data, filename=OUTPUT_FILE, lockfile=LOCKFILE):
@@ -130,24 +124,11 @@ def create_dynamic_spider(urls) -> Type[Spider]:
         name = "dynamic_spider"
         start_urls = urls
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            # Crear un loop asyncio dedicado para este spider
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-
-        def closed(self, reason):
-            # Cerrar el loop cuando el spider termine
-            self.loop.close()
-
         def parse(self, response):
             data = {
                 "url": response.url,
                 "title": response.css("title::text").get(default="Untitled")
             }
-            # Marcar la URL como scrapeada en la base de datos
-            # Abrir y cerrar conexión para cada llamada async
-            self.loop.run_until_complete(self.mark_as_scraped(response.url))
             for tag in ["h1", "h2", "h3", "h4", "h5", "h6", "p"]:
                 elements = response.css(f"{tag}::text").getall()
                 clean_elements = [e.strip() for e in elements if e.strip()]
@@ -161,13 +142,7 @@ def create_dynamic_spider(urls) -> Type[Spider]:
 
             yield data
 
-        async def mark_as_scraped(self, url):
-            # Abrir conexión, marcar como scrapeada, cerrar conexión
-            conn = await asyncpg.connect(**db_config)
-            try:
-                await mark_entry_as_viewed(conn, url)
-            finally:
-                await conn.close()
+
 
     return DynamicSpider
 
@@ -239,7 +214,8 @@ async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
             if not urls:
                 logger.info("No URLs found to process.")
                 return
-
+            for url in urls:
+               await mark_entry_as_viewed(conn, url)
             # Run the spider in a separate process (avoids signal issues)
             p = Process(target=run_dynamic_spider, args=(urls,))
             p.start()
