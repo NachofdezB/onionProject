@@ -6,7 +6,7 @@
 
 # @ Create Time: 2025-05-05 10:30:50
 
-# @ Modified time: 2025-09-06 21:17:59
+# @ Modified time: 2025-09-20 10:29:59
 
 # @ Description:This FastAPI router exposes endpoints for triggering a
 # dynamic spider to scrape news articles from URLs stored in a PostgreSQL
@@ -22,36 +22,36 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import FileResponse
 from app.scraping.spider_factory import run_dynamic_spider_from_db
 from loguru import logger
+import asyncio
 
 router = APIRouter(prefix="/newsSpider", tags=["News spider"])
 
 @router.get("/scrape-news")
-async def scrape_news_articles(request: Request) -> dict [str,str]:
+async def scrape_news_articles(request: Request) -> dict[str, str]:
     """
     Endpoint to start the news scraping process using the dynamic spider.
 
     This function:
-    - Acquires a PostgreSQL connection pool.
-    - Executes the dynamic spider to scrape news from URLs in the DB.
-    - Returns a success message or an error message if scraping fails.
+    - Retrieves the PostgreSQL connection pool from the app state.
+    - Launches the dynamic spider asynchronously in the background.
+    - Returns an immediate success message while the process runs.
 
     Args:
         request (Request): The incoming HTTP request object, with access to
-                            the app's state (DB connection pool).
+                           the app's state (DB connection pool).
 
     Returns:
-        dict: A dictionary with the operation status, indicating success or
-              failure.
+        dict[str, str]: A dictionary with the operation status message.
 
     Raises:
         HTTPException: If an error occurs during scraping, a 500 status code
                        exception is raised.
     """
-
     try:
         pool = request.app.state.pool
-        await run_dynamic_spider_from_db(pool)
-        return {"status": "✅ News successfully processed"}
+        # Run the spider function asynchronously in the background
+        asyncio.create_task(run_dynamic_spider_from_db(pool))
+        return {"status": "✅ News processing started"}
     except Exception as e:
         logger.error(f"Scraping failed: {e}")
         raise HTTPException(

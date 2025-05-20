@@ -3,7 +3,7 @@
 
 # @ Create Time: 2025-05-5 12:17:59
 
-# @ Modified time: 2025-05-9 20:39:59
+# @ Modified time: 2025-05-20 10:29:59
 
 # @ Project: Cebolla
 
@@ -20,17 +20,92 @@
 #
 # Extracted data is saved locally in JSON format for further processing or a
 # nalysis.
+import os
+import time
+import json
 from scrapy.spiders import Spider
 from scrapy.crawler import CrawlerProcess
-from app.models.ttrss_postgre_db import get_entry_links
+from app.models.ttrss_postgre_db import get_entry_links,mark_entry_as_viewed
 from multiprocessing import Process
-import time
+import asyncio
+import asyncpg
 import logging
 from scrapy.utils.log import configure_logging
 from typing import Type, Coroutine, Any
 from loguru import logger
 
-def create_dynamic_spider(urls)-> Type[Spider]:
+# Lock file name to manage concurrent write access to JSON output
+LOCKFILE = "result.json.lock"
+# Output JSON file name
+OUTPUT_FILE = "result.json"
+db_config = {
+    "user": "postgres",
+    "password": "password123",
+    "database": "postgres",
+    "host": "127.0.0.1",
+    "port": 5432
+}
+
+
+def write_json_array_with_lock(data, filename=OUTPUT_FILE, lockfile=LOCKFILE):
+    """
+    Writes data into a single JSON array file with each JSON object on one line.
+    Uses file-based locking to prevent concurrent writes.
+
+    If file doesn't exist, creates it with an array containing the first data object.
+    If file exists, inserts the new data before the closing ] with a comma separator.
+
+    Args:
+        data (dict): The scraped data to write.
+        filename (str): Path to the JSON file.
+        lockfile (str): Path to the lock file.
+    """
+    import os
+    import time
+    import json
+
+    while os.path.exists(lockfile):
+        time.sleep(0.1)
+
+    with open(lockfile, "w") as f_lock:
+        f_lock.write("locked")
+
+    try:
+        if not os.path.exists(filename):
+            with open(filename, "w", encoding="utf8") as f:
+                f.write("[\n")
+                json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+                f.write("\n]")
+        else:
+            with open(filename, "r+", encoding="utf8") as f:
+                f.seek(0, os.SEEK_END)
+                pos = f.tell() - 1
+
+                while pos > 0:
+                    f.seek(pos)
+                    char = f.read(1)
+                    if char == ']':
+                        break
+                    pos -= 1
+
+                if pos <= 0:
+                    # Malformed file fallback
+                    f.seek(0, os.SEEK_END)
+                    f.write(",\n")
+                    json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+                    f.write("\n]")
+                else:
+                    f.seek(pos)
+                    f.truncate()
+                    f.write(",\n")
+                    json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+                    f.write("\n]")
+    finally:
+        os.remove(lockfile)
+
+
+
+def create_dynamic_spider(urls) -> Type[Spider]:
     """
     Creates a dynamic Scrapy spider class for extracting content from a list
     of URLs.
@@ -39,33 +114,65 @@ def create_dynamic_spider(urls)-> Type[Spider]:
     processes each URL by extracting:
       - The page title
       - All text content inside header tags (h1–h6) and paragraph tags (p)
+      - Writes scraped data into a JSON file with manual file locking
+      - Marks the URL as scraped in the database opening and closing
+        a connection for each URL.
 
     Args:
         urls (list[str]): A list of URLs to crawl.
+        db_config (dict): Configuration dict for asyncpg connection parameters.
 
     Returns:
         Type[Spider]: A dynamically created Scrapy Spider class.
     """
+
     class DynamicSpider(Spider):
         name = "dynamic_spider"
         start_urls = urls
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Crear un loop asyncio dedicado para este spider
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+
+        def closed(self, reason):
+            # Cerrar el loop cuando el spider termine
+            self.loop.close()
 
         def parse(self, response):
             data = {
                 "url": response.url,
                 "title": response.css("title::text").get(default="Untitled")
             }
-
+            # Marcar la URL como scrapeada en la base de datos
+            # Abrir y cerrar conexión para cada llamada async
+            self.loop.run_until_complete(self.mark_as_scraped(response.url))
             for tag in ["h1", "h2", "h3", "h4", "h5", "h6", "p"]:
                 elements = response.css(f"{tag}::text").getall()
                 clean_elements = [e.strip() for e in elements if e.strip()]
                 data[tag] = clean_elements
 
+            # Manually write data to JSON with file locking to prevent concurrency issues
+            write_json_array_with_lock(data)
+            logger.info(f"URL: {response.url} scrapeada")
+
+
+
             yield data
+
+        async def mark_as_scraped(self, url):
+            # Abrir conexión, marcar como scrapeada, cerrar conexión
+            conn = await asyncpg.connect(**db_config)
+            try:
+                await mark_entry_as_viewed(conn, url)
+            finally:
+                await conn.close()
 
     return DynamicSpider
 
-def run_dynamic_spider(urls)-> None:
+
+def run_dynamic_spider(urls) -> None:
     """
     Runs a dynamically generated Scrapy spider to scrape content from a list
     of URLs.
@@ -79,7 +186,8 @@ def run_dynamic_spider(urls)-> None:
         - Sets a realistic user-agent string for better scraping reliability.
         - Enables a download delay and auto-throttling to reduce server load.
         - Configures retries for transient HTTP errors (e.g., 429, 503).
-        - Saves scraped data into a local JSON file ("result.json").
+        - Writes scraped data into a local JSON file ("result.json") using
+          manual file locking to avoid concurrency problems.
 
     Args:
         urls (list[str]): A list of web URLs to be scraped.
@@ -101,20 +209,14 @@ def run_dynamic_spider(urls)-> None:
         "RETRY_ENABLED": True,
         "RETRY_TIMES": 5,  # Retry failed requests up to 5 times
         "RETRY_HTTP_CODES": [429, 500, 502, 503, 504],
-        "FEEDS": {
-            "result.json": {
-                "format": "json",
-                "overwrite": True,
-                "encoding": "utf8"
-            }
-        }
+        # No FEEDS or ITEM_PIPELINES used here because writing is manual
     })
 
     process.crawl(DynamicSpider)
     process.start()
 
 
-def run_dynamic_spider_from_db(pool)-> Coroutine[Any, Any, None]:
+async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
     """
     Creates and returns an asynchronous function that continuously runs the
     dynamic Scrapy spider.
@@ -129,22 +231,19 @@ def run_dynamic_spider_from_db(pool)-> Coroutine[Any, Any, None]:
         access.
 
     Returns:
-        Callable[[], None]: An asynchronous function that starts the continuous
-        spider execution loop.
+        None.
     """
-    async def run()-> None:
-        while True:
-            async with pool.acquire() as conn:
-                urls = await get_entry_links(conn)
-                if not urls:
-                    print("No URLs found to process.")
-                    return
+    while True:
+        async with pool.acquire() as conn:
+            urls = await get_entry_links(conn)
+            if not urls:
+                logger.info("No URLs found to process.")
+                return
 
-                p = Process(target=run_dynamic_spider, args=(urls,))
-                p.start()
-                p.join()
+            # Run the spider in a separate process (avoids signal issues)
+            p = Process(target=run_dynamic_spider, args=(urls,))
+            p.start()
+            #p.join()  # Optional: uncomment if you want to wait for spider to finish before continuing
 
-            logger.info("Waiting for next run...")
-            time.sleep(5)
-
-    return run()
+        logger.info("Waiting for next run...")
+        await asyncio.sleep(60)

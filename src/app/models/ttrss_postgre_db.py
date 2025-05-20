@@ -6,7 +6,7 @@
 
 # @ Create Time: 2025-05-05 10:30:50
 
-# @ Modified time: 2025-05-06 16:17:59
+# @ Modified time: 2025-05-20 10:29:59
 
 # @ Description: Module for handling operations on RSS feed entries in Tiny
 # Tiny RSS using PostgreSQL. Provides data models for input/output and database
@@ -123,15 +123,69 @@ async def insert_feed_to_db(
 
 async def get_entry_links(conn: Connection) -> List[str]:
     """
-    Retrieve all non-null entry links from the ttrss_entries table.
+    Retrieve entry links that are unread (unread = true) for a specific user.
 
     Args:
         conn (Connection): Active database connection.
 
     Returns:
-        List[str]: A list of entry URLs from RSS feeds.
+        List[str]: List of URLs not yet viewed by the user.
     """
+    login = "admin"
+
+    row = await conn.fetchrow(
+        "SELECT id FROM ttrss_users WHERE login = $1",
+        login
+    )
+    if not row:
+        raise ValueError("User not found")
+    owner_uid = row["id"]
     rows = await conn.fetch(
-        "SELECT link FROM ttrss_entries WHERE link IS NOT NULL"
+        """
+        SELECT e.link
+        FROM ttrss_entries e
+        JOIN ttrss_user_entries u ON u.ref_id = e.id
+        WHERE e.link IS NOT NULL
+          AND u.owner_uid = $1
+          AND u.unread = TRUE
+        """,
+        owner_uid
     )
     return [row["link"] for row in rows]
+
+
+async def mark_entry_as_viewed(conn: Connection, url: str) -> None:
+    """
+    Mark an entry as viewed (unread = false) for the user with login "postgres".
+
+    Args:
+        conn (Connection): Active database connection.
+        url (str): URL to mark as viewed.
+
+    Returns:
+        None
+    """
+    login = "admin"
+
+    row = await conn.fetchrow(
+        "SELECT id FROM ttrss_users WHERE login = $1",
+        login
+    )
+    if not row:
+        raise ValueError("User not found")
+    owner_uid = row["id"]
+
+    await conn.execute(
+        """
+        UPDATE ttrss_user_entries u
+        SET unread = FALSE
+        FROM ttrss_entries e
+        WHERE u.ref_id = e.id
+          AND u.owner_uid = $1
+          AND e.link = $2
+        """,
+        owner_uid,
+        url
+    )
+
+
