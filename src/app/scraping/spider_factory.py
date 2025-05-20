@@ -189,6 +189,7 @@ def run_dynamic_spider(urls) -> None:
 
     process.crawl(DynamicSpider)
     process.start()
+    logger.info("Urls scrapeadas")
 
 
 async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
@@ -208,18 +209,21 @@ async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
     Returns:
         None.
     """
+    number=0
     while True:
+        logger.info(f"Scraped lap {number}")
         async with pool.acquire() as conn:
             urls = await get_entry_links(conn)
             if not urls:
                 logger.info("No URLs found to process.")
-                return
-            for url in urls:
-               await mark_entry_as_viewed(conn, url)
-            # Run the spider in a separate process (avoids signal issues)
-            p = Process(target=run_dynamic_spider, args=(urls,))
-            p.start()
-            #p.join()  # Optional: uncomment if you want to wait for spider to finish before continuing
+            else:
+                for url in urls:
+                    await mark_entry_as_viewed(conn, url)
+                # Run the spider in a separate process (avoids signal issues)
+                p = Process(target=run_dynamic_spider, args=(urls,))
+                p.start()
+                #p.join()  # Optional: uncomment if you want to wait for spider to finish before continuing
 
         logger.info("Waiting for next run...")
         await asyncio.sleep(60)
+        number+=1
