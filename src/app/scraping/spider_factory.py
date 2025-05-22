@@ -1,25 +1,35 @@
 # @ Author: Ignacio Fernandez Belda. Aitea Tech Becarios
 # <nachofernandezbelda@gmail.com>
-
-# @ Create Time: 2025-05-5 12:17:59
-
+# @ Create Time: 2025-05-05 12:17:59
 # @ Modified time: 2025-05-20 10:29:59
-
 # @ Project: Cebolla
-
-# @ Description: This module defines the logic for dynamically scraping web
-# pages using Scrapy.
-# It includes a factory function that builds a custom Spider class on the fly,
-# based on a list of input URLs. The spider extracts key structural content
-# such as titles, headers (h1-h6), and paragraph text.
+# @ Description:
+# This module implements a dynamic web scraping solution using Scrapy,
+# tailored to extract key content from arbitrary web pages.
 #
-# The module also manages the execution of the spider:
-# - Once via `run_dynamic_spider()` with a static list of URLs
-# - Continuously via `run_dynamic_spider_from_db()`, which pulls fresh URLs
-#   from a PostgreSQL database using an asyncpg connection pool.
+# It features a factory function that dynamically generates a Scrapy Spider
+# class
+# based on a given list of URLs. The spider scrapes each page to extract:
+# - The page title
+# - Text content within headers (h1 through h6) and paragraphs (p)
 #
-# Extracted data is saved locally in JSON format for further processing or a
-# nalysis.
+# Extracted content is filtered to detect cybersecurity-related keywords.
+# Relevant data is saved locally in a JSON file using a custom file locking
+# mechanism to ensure concurrency-safe writes.
+#
+# The module supports two modes of operation:
+# 1. `run_dynamic_spider()` runs the spider once on a static list of URLs.
+# 2. `run_dynamic_spider_from_db()` runs the spider continuously, fetching fresh
+#    URLs periodically from a PostgreSQL database via an asyncpg connection pool.
+#    Each fetched URL is marked as processed to avoid duplication.
+#
+# The scraping process respects polite crawling policies including delays,
+# auto-throttling, retries on common HTTP errors, and realistic user-agent
+# headers.
+#
+# This module enables scalable and efficient extraction of structured content
+# from diverse web sources for subsequent analysis or processing within the
+# Cebolla project.
 
 from scrapy.spiders import Spider
 from scrapy.crawler import CrawlerProcess

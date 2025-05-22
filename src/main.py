@@ -14,8 +14,8 @@
 # during startup and shutdown. When executed directly, it launches the
 # application with Uvicorn in development mode with hot-reloading enabled
 
-from app.controllers.tiny_postgres_controller import router as postgre_feeds
-from app.controllers.scrapy_news_controller import router as newsSpider
+from app.controllers.routes.tiny_postgres_controller import router as postgre_feeds
+from app.controllers.routes.scrapy_news_controller import router as newsSpider
 from loguru import logger
 from fastapi import FastAPI
 import asyncpg

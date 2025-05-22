@@ -1,22 +1,24 @@
 # @ Author: Ignacio Fernandez Belda. Aitea Tech Becarios
 # <nachofernandezbelda@gmail.com>
-
-# @ Create Time: 2025-05-5 12:17:59
-
-# @ Modified time: 2025-05-9 20:39:59
-
+# @ Create Time: 2025-05-05 12:17:59
+# @ Modified time: 2025-05-09 20:39:59
 # @ Project: Cebolla
-
 # @ Description:
-# This module defines a dynamic Scrapy spider to extract RSS and Atom feed
-# links from a list of provided URLs. It uses the `feedparser` library to parse
-# the RSS feeds and extract key metadata, such as the feed title and site URL.
-# The extracted feed URLs and metadata are then stored in a PostgreSQL database
-# through asyncpg. The spider runs asynchronously with the help of a
-# multiprocessing approach, allowing the extraction process to be handled
-# concurrently for multiple URLs. This module also includes functionality
-# to read URLs from a file and periodically fetch and process new RSS feeds
-# from the URLs stored in a database.
+# This module implements a dynamic Scrapy spider designed to extract RSS and Atom feed
+# URLs from a given list of websites. It leverages the feedparser library to parse feed
+# metadata such as titles and site URLs, and stores valid feeds asynchronously into a
+# PostgreSQL database using asyncpg.
+#
+# Key functionalities include:
+# - Reading URLs from a local file to scan for RSS feeds.
+# - Dynamically creating and running a Scrapy spider that detects RSS/Atom/XML feeds via <link> tags.
+# - Running the spider asynchronously with multiprocessing to handle multiple URLs concurrently.
+# - Parsing each discovered feed to extract essential metadata.
+# - Inserting extracted feed data into the PostgreSQL database with proper error handling.
+# - Configurable crawling settings with retry mechanisms and polite crawling delays.
+#
+# This module supports scalable and efficient feed discovery and ingestion for the Cebolla project.
+
 
 import feedparser
 from scrapy.crawler import CrawlerProcess

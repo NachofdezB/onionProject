@@ -1,26 +1,26 @@
 # @ Author: Antonio Llorente. Aitea Tech Becarios
-
 # <antoniollorentecuenca@gmail.com>
-
 # @ Project: Cebolla
-
 # @ Create Time: 2025-05-05 10:30:50
-
 # @ Modified time: 2025-09-06 16:17:59
+# @ Description:
+# This FastAPI router provides endpoints for managing and retrieving RSS feed
+# metadata using a PostgreSQL backend. The router supports the following
+# operations:
+#
+# 1. `GET /search-and-insert-rss`: Reads a list of URLs from a local file,
+# extracts valid RSS feeds using a scraping routine, and stores the
+# resulting metadata (such as feed title and site URL) in the PostgreSQL
+# database.
+#
+# 2. `GET /feeds`: Retrieves a list of RSS feeds stored in the database,
+# allowing clients to specify a limit on the number of results returned
+# (default: 10).
+#
+# The module is designed for efficient, asynchronous interaction with the
+# database and serves as part of a larger system to collect and organize
+# cybersecurity-related feed sources.
 
-# @ Description: This FastAPI router provides endpoints for managing RSS feed
-# data using a PostgreSQL backend.
-# The router includes the following functionalities:
-# 1. `POST /feeds`: Accepts an RSS feed URL, parses its content using the
-# feedparser library, and inserts its metadata (e.g., title, feed URL, and
-# site URL) into the PostgreSQL database.
-# 2. `GET /search-and-insert-rss`: Reads a list of URLs from a file and
-# processes them to extract and save RSS feed metadata into the database.
-# 3. `GET /feeds`: Retrieves a list of RSS feeds stored in the PostgreSQL
-# database, with an optional limit on the number of results.
-# This module is designed to handle the creation, search, and insertion of
-# RSS feeds and their metadata in a structured way, using asynchronous
-# database interactions.
 
 from fastapi import APIRouter, Request, HTTPException
 from app.scraping.sipder_rss import extract_rss_and_save
@@ -63,7 +63,7 @@ async def search_and_insert_rss(request: Request) -> dict[str, str]:
         dict: A success message indicating that the feeds were processed.
     """
     pool = request.app.state.pool
-    file_path = "src/data/urls_ciberseguridad_ot_it.txt"
+    file_path = "src/data/urls_cybersecurity_ot_it.txt"
     await extract_rss_and_save(pool, file_path)
     return {"status": "✅ Feeds successfully processed"}
 
