@@ -18,13 +18,66 @@
 # If the file is not found, a 404 error is raised.
 
 import os
+from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import feedparser
+from pydantic import BaseModel, HttpUrl
+from app.models.ttrss_postgre_db import FeedResponse, FeedUrlRequest, GoogleAlertFeed
 from app.scraping.spider_factory import run_dynamic_spider_from_db
 from loguru import logger
 import asyncio
+import xml.etree.ElementTree as ET
 
-router = APIRouter(prefix="/newsSpider", tags=["News spider"])
+from app.controllers.google_alerts_pages import fetch_and_save_alert_urls
+
+router = APIRouter(
+    prefix="/newsSpider",
+    tags=["News spider"],
+    responses={
+        404: {"description": "Not found"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        500: {"description": "Internal Server Error"},
+    },
+)
+
+class FeedUrlRequest(BaseModel):
+    feed_url: HttpUrl
+
+
+class SaveLinkResponse(BaseModel):
+    message: str
+    link: HttpUrl
+    title: str
+
+LINKS_FILE = Path("src/data/google_alert_rss.txt")
+
+@router.post("/guardar-link", response_model=SaveLinkResponse)
+async def guardar_link(feed_req: FeedUrlRequest):
+    url = str(feed_req.feed_url)
+
+    try:
+        # Parsear el feed con feedparser
+        feed = feedparser.parse(url)
+
+        if not feed.entries:
+            raise ValueError("No se encontraron entradas en el feed")
+
+        title = feed.feed.get("title", "Sin título")
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error validando el feed: {e}")
+
+    # Guardar si todo va bien
+    LINKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(LINKS_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{url} | {title}\n")
+
+    return SaveLinkResponse(message="Link guardado correctamente", link=feed_req.feed_url, title=title)
+
+
+
 
 @router.get("/scrape-news")
 async def scrape_news_articles(request: Request) -> dict[str, str]:
@@ -58,6 +111,23 @@ async def scrape_news_articles(request: Request) -> dict[str, str]:
             status_code=500,
             detail=f"Scraping failed: {str(e)}"
         )
+
+
+@router.get("/feeds")
+async def get_news_from_google_alerts(request: Request):
+    try:
+        logger.info("Iniciando extracción de URLs desde Google Alerts")
+        fetch_and_save_alert_urls()
+
+        logger.info("Iniciando scraping de contenido desde las URLs extraídas")
+        run_dynamic_spider_from_db("news_content_spider")
+
+        return JSONResponse(content={"message": "Spiders ejecutados correctamente"}, status_code=200)
+
+    except Exception as e:
+        logger.error(f"Error al ejecutar spiders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/result.json")
 async def get_result_json():

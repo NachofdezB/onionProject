@@ -12,7 +12,7 @@
 # Tiny RSS using PostgreSQL. Provides data models for input/output and database
 #functions to retrieve and insert feeds.
 
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, HttpUrl
 from asyncpg import Connection
 from fastapi import HTTPException
@@ -42,6 +42,26 @@ class FeedResponse(BaseModel):
 
 class FeedUrlList(BaseModel):
     urls: List[HttpUrl]
+
+
+class GoogleAlertEntry(BaseModel):
+    id: str
+    title: str
+    link: HttpUrl
+    published: Optional[str]
+    updated: Optional[str]
+    content: Optional[str]
+
+
+class GoogleAlertFeed(BaseModel):
+    id: str
+    title: str
+    link: HttpUrl
+    updated: Optional[str]
+    entries: List[GoogleAlertEntry]
+
+class FeedUrlRequest(BaseModel):
+    feed_url: HttpUrl
 
 async def get_feeds_from_db(
     conn: Connection,

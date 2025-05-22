@@ -20,15 +20,12 @@
 #
 # Extracted data is saved locally in JSON format for further processing or a
 # nalysis.
-import os
-import time
-import json
+
 from scrapy.spiders import Spider
 from scrapy.crawler import CrawlerProcess
 from app.models.ttrss_postgre_db import get_entry_links,mark_entry_as_viewed
 from multiprocessing import Process
 import asyncio
-import asyncpg
 import logging
 from scrapy.utils.log import configure_logging
 from typing import Type, Coroutine, Any
@@ -39,7 +36,12 @@ LOCKFILE = "result.json.lock"
 # Output JSON file name
 OUTPUT_FILE = "result.json"
 
-
+CYBERSECURITY_KEYWORDS = [
+    "ciberseguridad", "cybersecurity", "malware", "ransomware", "phishing",
+    "hacking", "vulnerabilidad", "vulnerability", "ataque", "ataques", "exploit",
+    "seguridad informática", "seguridad digital", "threat", "threats", "spyware",
+    "breach", "data leak", "cyber attack", "ddos"
+]
 
 def write_json_array_with_lock(data, filename=OUTPUT_FILE, lockfile=LOCKFILE):
     """
@@ -98,7 +100,6 @@ def write_json_array_with_lock(data, filename=OUTPUT_FILE, lockfile=LOCKFILE):
         os.remove(lockfile)
 
 
-
 def create_dynamic_spider(urls) -> Type[Spider]:
     """
     Creates a dynamic Scrapy spider class for extracting content from a list
@@ -129,19 +130,24 @@ def create_dynamic_spider(urls) -> Type[Spider]:
                 "url": response.url,
                 "title": response.css("title::text").get(default="Untitled")
             }
+            full_text = data["title"].lower()
             for tag in ["h1", "h2", "h3", "h4", "h5", "h6", "p"]:
                 elements = response.css(f"{tag}::text").getall()
                 clean_elements = [e.strip() for e in elements if e.strip()]
                 data[tag] = clean_elements
+                full_text += " " + " ".join(clean_elements).lower()
 
-            # Manually write data to JSON with file locking to prevent concurrency issues
-            write_json_array_with_lock(data)
+            # Check if any cybersecurity keyword is in the text
+            if any(keyword in full_text for keyword in CYBERSECURITY_KEYWORDS):
+                write_json_array_with_lock(data)
+                logger.info(f"URL relacionada con ciberseguridad: {response.url}")
+                yield data
+            else:
+                logger.info(f"Descartada (no relevante): {response.url}")
             logger.info(f"URL: {response.url} scrapeada")
 
 
-
             yield data
-
 
 
     return DynamicSpider
@@ -217,6 +223,7 @@ async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
             if not urls:
                 logger.info("No URLs found to process.")
             else:
+                logger.info(f"{len(urls)} found to scraped")
                 for url in urls:
                     await mark_entry_as_viewed(conn, url)
                 # Run the spider in a separate process (avoids signal issues)

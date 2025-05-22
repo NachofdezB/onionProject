@@ -1,0 +1,16 @@
+sudo docker-compose -f nginx-proxy-manager.yml -f tinytinyrss.yml --env-file stack.env up -d
+
+//tiny
+admin
+wZ9j4MxnyJqDaCSH
+ip para la base de datos
+docker inspect composables-db-1 | grep "IPAddress"
+"IPAddress": "172.18.0.4",
+
+
+//nginx
+http://localhost:81/nginx/proxy
+tinytiny.duckdns.org
+extrem.bird.0.1@gmail.com
+composables-web-nginx-11
+
