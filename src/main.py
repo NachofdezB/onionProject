@@ -16,6 +16,7 @@
 
 from app.controllers.routes.tiny_postgres_controller import router as postgre_feeds
 from app.controllers.routes.scrapy_news_controller import router as newsSpider
+from app.controllers.routes.spacy_controller import router as spacy
 from loguru import logger
 from fastapi import FastAPI
 import asyncpg
@@ -27,6 +28,7 @@ app = FastAPI()
 # Include the feeds router (which handles Scrapy-related routes)
 app.include_router(postgre_feeds)
 app.include_router(newsSpider)
+app.include_router(spacy)
 
 # Create a connection pool for the PostgreSQL database
 async def create_pool()-> None:
