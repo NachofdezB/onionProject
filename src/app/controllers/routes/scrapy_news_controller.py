@@ -21,8 +21,10 @@ from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from app.models.pydantic import FeedUrlRequest, SaveLinkResponse
+from app.scraping.feeds_gd import run_dorks_continuously
 from app.scraping.spider_factory import run_dynamic_spider_from_db
 from loguru import logger
+import threading
 
 from app.controllers.google_alerts_pages import fetch_and_save_alert_urls
 
@@ -176,3 +178,19 @@ async def get_result_json():
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(file_path, media_type='application/json')
+
+scraping_thread = None
+
+def run_scraping_thread():
+    run_dorks_continuously()
+
+@router.get("/scrapy/feeds/discover")
+async def discover_feeds():
+    global scraping_thread
+    if scraping_thread and scraping_thread.is_alive():
+        return {"status": "running", "message": "Scraping is already running."}
+
+    scraping_thread = threading.Thread(target=run_scraping_thread, daemon=True)
+    scraping_thread.start()
+
+    return {"status": "started", "message": "Scraping started in background."}

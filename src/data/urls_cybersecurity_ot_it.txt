@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 https://thehackernews.com
 https://www.bleepingcomputer.com
 https://www.securityweek.com
@@ -64,3 +65,5 @@ https://www.linkedin.com/posts/black-hills-information-security_sometimes-the-in
 https://x.com/PwC_Cy_Press/status/1924797853383176453
 https://www.globalsecuritymag.com/keeper-security-appoints-shane-barney-as-chief-information-security-officer.html
 https://vmblog.com/archive/2025/05/20/keeper-security-appoints-shane-barney-as-chief-information-security-officer.aspx
+=======
+>>>>>>> Stashed changes
