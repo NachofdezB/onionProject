@@ -87,8 +87,6 @@ async def guardar_link(feed_req: FeedUrlRequest) -> SaveLinkResponse:
         )
 
 
-
-
 @router.get("/scrape-news")
 async def scrape_news_articles(request: Request) -> dict[str, str]:
     """
@@ -123,74 +121,83 @@ async def scrape_news_articles(request: Request) -> dict[str, str]:
         )
 
 
-@router.get("/feeds")
-async def get_news_from_google_alerts(request: Request) -> JSONResponse:
-    '''
-    @brief Endpoint to trigger extraction and scraping of news URLs from
-    Google Alerts.
-
-    This asynchronous GET endpoint initiates the process of fetching and
-    saving URLs from Google Alerts RSS feeds, then runs a dynamic spider to
-    scrape content from those URLs.
-
-    Logs the start and success of each major step, and handles exceptions by
-    returning an HTTP 500 error with the exception details.
-
-    @param request: The incoming HTTP request (Request object).
-    @return: A JSON response confirming successful spider execution.
-    @raises HTTPException: If any error occurs during fetching or scraping.
-    '''
+def recurring_google_alert_scraper() -> None:
+    """
+    Extrae URLs desde feeds de Google Alerts, ejecuta el spider dinámico,
+    y reprograma la tarea para que se ejecute cada 24 horas.
+    """
     try:
-        logger.info("Iniciando extracción de URLs desde Google Alerts")
+        logger.info("[Google Alerts] Iniciando extracción de feeds desde google_alert_rss.txt")
         fetch_and_save_alert_urls()
 
-        logger.info("Iniciando scraping de contenido desde las URLs extraídas")
+        logger.info("[Spider] Iniciando scraping de contenido desde las URLs extraídas")
         run_dynamic_spider_from_db("news_content_spider")
 
-        return JSONResponse(
-                content={"message": "Spiders ejecutados correctamente"},
-                status_code=200
-            )
+        logger.success("[Feeds] Proceso de scraping desde Google Alerts finalizado correctamente")
 
     except Exception as e:
-        logger.error(f"Error al ejecutar spiders: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[Feeds] Error en el proceso de scraping desde Google Alerts: {e}")
 
+    # Reprogramar después de 24 horas (86400 segundos)
+    timer = threading.Timer(86400, recurring_google_alert_scraper)
+    timer.daemon = True
+    timer.start()
+    logger.info("Scheduler] Próxima ejecución del scraping de Google Alerts programada en 24 horas")
 
-@router.get("/result.json")
-async def get_result_json():
+@router.get("/start-google-alerts-scheduler")
+async def start_google_alert_scheduler() -> JSONResponse:
     """
-    Endpoint to retrieve the result.json file.
-
-    This function attempts to return the `result.json` file from the server's
-    file system. If the file is not found, it raises a 404 error.
+    Inicia un hilo en segundo plano que ejecuta el scraping de Google Alerts cada 24 horas.
 
     Returns:
-        FileResponse: The `result.json` file if it exists.
-
-    Raises:
-        HTTPException: If the `result.json` file does not exist, a 404 status
-                       code is raised.
+        JSONResponse: mensaje de éxito
     """
-    file_path = "src/outputs/result.json"
+    feeds_path = "src/data/google_alert_rss.txt"
+    if not os.path.exists(feeds_path):
+        logger.warning("[Startup] Archivo google_alert_rss.txt no encontrado. Abortando scheduler.")
+        raise HTTPException(
+            status_code=404,
+            detail="Archivo google_alert_rss.txt no encontrado"
+        )
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
+    threading.Thread(
+        target=recurring_google_alert_scraper,
+        daemon=True
+    ).start()
 
-    return FileResponse(file_path, media_type='application/json')
+    logger.info("[Scheduler] Tarea recurrente de Google Alerts iniciada correctamente.")
+    return JSONResponse(
+        content={"message": "Proceso de scraping de Google Alerts iniciado. Se ejecutará cada 24 horas."},
+        status_code=200
+    )
 
-scraping_thread = None
+def background_scraping_every() -> None:
+    """
+    Ejecuta el scraping una vez y programa el siguiente para dentro de 24 horas.
+    """
+    try:
+        logger.info("🔍 [Scraper] Iniciando scraping con run_dorks_continuously()...")
+        run_dorks_continuously()
+        logger.success("[Scraper] Scraping completado.")
+    except Exception as e:
+        logger.error(f"[Scraper] Error durante el scraping: {e}")
 
-def run_scraping_thread():
-    run_dorks_continuously()
+    # Reprogramar ejecución dentro de 24 horas
+    timer = threading.Timer(8400, background_scraping_every)
+    timer.daemon = True
+    timer.start()
+    logger.info("[Scheduler] Próxima ejecución de scraping programada en 24 horas.")
+
 
 @router.get("/scrapy/feeds/discover")
-async def discover_feeds():
-    global scraping_thread
-    if scraping_thread and scraping_thread.is_alive():
-        return {"status": "running", "message": "Scraping is already running."}
+async def start_scraping_scheduler() -> dict[str, str]:
+    """
+    Inicia el scraping en segundo plano, y lo programa para ejecutarse cada 24 horas.
+    """
+    threading.Thread(
+        target=background_scraping_every,
+        daemon=True
+    ).start()
 
-    scraping_thread = threading.Thread(target=run_scraping_thread, daemon=True)
-    scraping_thread.start()
-
-    return {"status": "started", "message": "Scraping started in background."}
+    logger.info("Scheduler] Scraping programado para ejecutarse cada 24 horas.")
+    return {"message": "Scraping iniciado. Se repetirá automáticamente cada 24 horas."}

@@ -22,6 +22,9 @@
 # cybersecurity-related feed sources.
 
 
+import asyncio
+import os
+import threading
 from fastapi import APIRouter, Request, HTTPException
 from app.scraping.sipder_rss import extract_rss_and_save
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -45,27 +48,102 @@ router = APIRouter(
     },
 )
 
-
-@router.get("/search-and-insert-rss")
-async def search_and_insert_rss(request: Request) -> dict[str, str]:
+def background_rss_process_every(pool, file_path: str, loop: asyncio.AbstractEventLoop):
     """
-    Reads URLs from a file, processes them to extract RSS feeds, and stores
-    the feed metadata into the PostgreSQL database.
-
-    This endpoint triggers the process to read URLs from a predefined file,
-    attempts to extract RSS feed links, and saves the feed metadata into the
-    PostgreSQL database.
+    Executes the RSS extraction and saving task, then schedules the next execution in 25 hours.
 
     Args:
-        request (Request): The incoming HTTP request object.
+        pool: PostgreSQL connection pool.
+        file_path (str): Path to the file containing URLs to process.
+        loop: Main asyncio event loop.
+    """
+    async def run_task():
+        try:
+            logger.info("🔍 [RSS] Starting RSS feed extraction and saving...")
+            await extract_rss_and_save(pool, file_path)
+            logger.success("[RSS] RSS feed extraction and saving completed.")
+        except Exception as e:
+            logger.error(f"[RSS] Error during RSS extraction and saving: {e}")
+
+    # Ejecuta la corrutina en el loop principal de asyncio de forma segura desde otro hilo
+    asyncio.run_coroutine_threadsafe(run_task(), loop)
+
+    # Programa la siguiente ejecución en 25 horas (90000 segundos)
+    timer = threading.Timer(300, background_rss_process_every, args=(pool, file_path, loop))
+    timer.daemon = True
+    timer.start()
+    logger.info("[Scheduler] Next RSS extraction scheduled in 25 hours.")
+
+
+
+@router.get("/search-and-insert-rss")
+async def search_and_insert_rss(request: Request):
+    """
+    Starts the background process that runs RSS extraction every 25 hours.
+
+    Args:
+        request (Request): Incoming HTTP request object.
 
     Returns:
-        dict: A success message indicating that the feeds were processed.
+        dict: Message confirming that the background process has started.
+
+    Raises:
+        HTTPException: If the URL file is not found.
     """
     pool = request.app.state.pool
     file_path = "src/data/urls_cybersecurity_ot_it.txt"
-    await extract_rss_and_save(pool, file_path)
-    return {"status": "✅ Feeds successfully processed"}
+
+    if not os.path.exists(file_path):
+        logger.warning("[Startup] URL file not found. Aborting scheduler.")
+        raise HTTPException(
+            status_code=404,
+            detail="URL file not found"
+        )
+
+    loop = asyncio.get_running_loop()
+
+    threading.Thread(
+        target=background_rss_process_every,
+        args=(pool, file_path, loop),
+        daemon=True
+    ).start()
+
+    logger.info("[Scheduler] Recurring RSS extraction task initialized.")
+    return {"message": "Background process started. It will run every 25 hours."}
+
+
+@router.get("/search-and-insert-rss")
+async def search_and_insert_rss(request: Request):
+    """
+    Starts the background process that runs RSS extraction every 25 hours.
+
+    Args:
+        request (Request): Incoming HTTP request object.
+
+    Returns:
+        dict: Message confirming that the background process has started.
+
+    Raises:
+        HTTPException: If the URL file is not found.
+    """
+    pool = request.app.state.pool
+    file_path = "src/data/urls_cybersecurity_ot_it.txt"
+
+    if not os.path.exists(file_path):
+        logger.warning("[Startup] URL file not found. Aborting scheduler.")
+        raise HTTPException(
+            status_code=404,
+            detail="URL file not found"
+        )
+
+    threading.Thread(
+        target=background_rss_process_every,
+        args=(pool, file_path),
+        daemon=True
+    ).start()
+
+    logger.info("[Scheduler] Recurring RSS extraction task initialized.")
+    return {"message": "Background process started. It will run every 25 hours."}
 
 
 
