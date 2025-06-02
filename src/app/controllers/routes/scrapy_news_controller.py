@@ -2,24 +2,28 @@
 # <antoniollorentecuenca@gmail.com>
 # @ Project: Cebolla
 # @ Create Time: 2025-05-05 10:30:50
-# @ Modified time: 2025-09-20 10:29:59
-# @ Description:This FastAPI router defines endpoints for interacting with a
-# dynamic web scraping
+# @ Modified time: 2025-06-02 10:29:59
+# @ Description:
+# This FastAPI router provides endpoints for managing and executing a dynamic
+# news scraping system. It includes functionality to:
 #
-# system focused on news content. It allows users to:
-# - Add and validate new RSS feed URLs (typically from Google Alerts),
-# - Trigger a scraping process that extracts real news URLs and content using spiders,
-# - Initiate scraping from URLs stored in a PostgreSQL database,
-# - Access the final results of scraping via the `result.json` file.
+# - Submit and validate RSS feed URLs (e.g., from Google Alerts),
+# - Trigger asynchronous scraping tasks using dynamic spiders,
+# - Schedule periodic scraping jobs to extract cybersecurity-related news,
+# - Automatically collect and process links from RSS feeds into structured data,
+# - Store or retrieve data using a PostgreSQL backend,
+# - Initiate recurring background jobs that execute every 24 hours.
 #
-# The system integrates asynchronous processing, error handling, and structur
+# The system is built for asynchronous execution and integrates file I/O,
+# background scheduling with threads, structured error handling, and persistent
+# feed metadata storage for reliable news data collection.
 
 import os
 import feedparser
 import asyncio
 from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from app.models.pydantic import FeedUrlRequest, SaveLinkResponse
 from app.scraping.feeds_gd import run_dorks_continuously
 from app.scraping.spider_factory import run_dynamic_spider_from_db
@@ -121,47 +125,38 @@ async def scrape_news_articles(request: Request) -> dict[str, str]:
         )
 
 
-def recurring_google_alert_scraper() -> None:
-    """
-    Extrae URLs desde feeds de Google Alerts, ejecuta el spider dinámico,
-    y reprograma la tarea para que se ejecute cada 24 horas.
-    """
-    try:
-        logger.info("[Google Alerts] Iniciando extracción de feeds desde google_alert_rss.txt")
-        fetch_and_save_alert_urls()
-
-        logger.info("[Spider] Iniciando scraping de contenido desde las URLs extraídas")
-        run_dynamic_spider_from_db("news_content_spider")
-
-        logger.success("[Feeds] Proceso de scraping desde Google Alerts finalizado correctamente")
-
-    except Exception as e:
-        logger.error(f"[Feeds] Error en el proceso de scraping desde Google Alerts: {e}")
-
-    # Reprogramar después de 24 horas (86400 segundos)
-    timer = threading.Timer(86400, recurring_google_alert_scraper)
-    timer.daemon = True
-    timer.start()
-    logger.info("Scheduler] Próxima ejecución del scraping de Google Alerts programada en 24 horas")
-
 @router.get("/start-google-alerts-scheduler")
-async def start_google_alert_scheduler() -> JSONResponse:
+async def start_google_alert_scheduler(request: Request) -> JSONResponse:
     """
-    Inicia un hilo en segundo plano que ejecuta el scraping de Google Alerts cada 24 horas.
+    @brief Starts the recurring Google Alerts scraping scheduler.
 
-    Returns:
-        JSONResponse: mensaje de éxito
+    @details
+    This endpoint initializes a background thread that runs a recurring scraping
+    task every 24 hours. The task reads Google Alerts RSS feed URLs from a local
+    file and processes them using a dynamic spider.
+
+    The actual scraping is handled by the `recurring_google_alert_scraper` function,
+    which is called in a background thread. The function re-schedules itself
+    every 24 hours using a timer.
+
+    If the RSS feeds file is missing, the request fails with a 404 error.
+
+    @param request: The FastAPI request object, used to access the current event loop.
+
+    @return JSONResponse: A message indicating that the scraping process was successfully scheduled.
+
+    @throws HTTPException: If the RSS feeds file is not found on disk.
     """
     feeds_path = "src/data/google_alert_rss.txt"
     if not os.path.exists(feeds_path):
         logger.warning("[Startup] Archivo google_alert_rss.txt no encontrado. Abortando scheduler.")
-        raise HTTPException(
-            status_code=404,
-            detail="Archivo google_alert_rss.txt no encontrado"
-        )
+        raise HTTPException(status_code=404, detail="Archivo google_alert_rss.txt no encontrado")
+
+    loop = asyncio.get_running_loop()
 
     threading.Thread(
         target=recurring_google_alert_scraper,
+        args=(loop,),
         daemon=True
     ).start()
 
@@ -171,33 +166,95 @@ async def start_google_alert_scheduler() -> JSONResponse:
         status_code=200
     )
 
-def background_scraping_every() -> None:
+
+def recurring_google_alert_scraper(loop: asyncio.AbstractEventLoop) -> None:
     """
-    Ejecuta el scraping una vez y programa el siguiente para dentro de 24 horas.
+    @brief Periodically updates Google Alerts feeds from a local file.
+
+    @details
+    This function performs the following tasks:
+    - Synchronously extracts Google Alerts RSS feed URLs from a local file by calling
+      `fetch_and_save_alert_urls()`.
+    - Logs success or failure of the feed update.
+    - Reschedules itself to run again in 24 hours using a daemon thread timer.
+
+    Note:
+    This function only updates the feed URLs source. The actual scraping and processing
+    of news articles should be handled separately (e.g., by the `scrape_news_articles` endpoint).
+
+    @param loop: The main FastAPI event loop (required for consistency, but not used here).
+
+    @return None
+    """
+    try:
+        logger.info("[Google Alerts] Extrayendo feeds desde archivo...")
+        fetch_and_save_alert_urls()
+
+        logger.success("[Feeds] Feeds de Google Alerts actualizados.")
+    except Exception as e:
+        logger.error(f"[Feeds] Error al extraer feeds: {e}")
+
+    # Repetir en 24h
+    timer = threading.Timer(86400, recurring_google_alert_scraper, args=(loop,))
+    timer.daemon = True
+    timer.start()
+    logger.info("[Scheduler] Próxima actualización de feeds en 24h")
+
+
+@router.get("/scrapy/feeds/discover")
+async def start_scraping_scheduler(request: Request) -> dict[str, str]:
+    """
+    @brief Starts a recurring background task to scrape feeds using predefined dorks.
+
+    @details
+    This endpoint launches a background thread that:
+    - Executes the `run_dorks_continuously()` scraping routine.
+    - Reschedules itself to repeat the scraping every 24 hours (86400 seconds).
+    - Runs asynchronously and does not block the main FastAPI event loop.
+
+    @param request: FastAPI request object, required to access the event loop.
+
+    @return dict[str, str]: Status message indicating the scheduler has started.
+    """
+    loop = asyncio.get_running_loop()
+
+    threading.Thread(
+        target=background_scraping_every,
+        args=(loop,),
+        daemon=True
+    ).start()
+
+    logger.info("[Scheduler] Scraping programado para ejecutarse cada 24 horas.")
+    return {"message": "Scraping iniciado. Se repetirá automáticamente cada 24 horas."}
+
+
+def background_scraping_every(loop: asyncio.AbstractEventLoop) -> None:
+    """
+    @brief Executes the dorks-based scraping task and reschedules itself every 24 hours.
+
+    @details
+    - This function is intended to run in a separate daemon thread.
+    - It uses the provided event loop to run the async scraping function
+      `run_dorks_continuously()` inside a thread-safe coroutine context.
+    - After the scraping is completed (or an error occurs), it sets a timer to
+      call itself again after 86400 seconds (24 hours).
+
+    @param loop: The main asyncio event loop to safely run asynchronous scraping logic from a thread.
+
+    @return None
     """
     try:
         logger.info("🔍 [Scraper] Iniciando scraping con run_dorks_continuously()...")
-        run_dorks_continuously()
+        # Si run_dorks_continuously es async, llama así:
+        future = asyncio.run_coroutine_threadsafe(run_dorks_continuously(), loop)
+        future.result()  # espera a que termine (opcional)
+
         logger.success("[Scraper] Scraping completado.")
     except Exception as e:
         logger.error(f"[Scraper] Error durante el scraping: {e}")
 
-    # Reprogramar ejecución dentro de 24 horas
-    timer = threading.Timer(8400, background_scraping_every)
+    # Reprogramar ejecución dentro de 24 horas (86400 segundos)
+    timer = threading.Timer(86400, background_scraping_every, args=(loop,))
     timer.daemon = True
     timer.start()
     logger.info("[Scheduler] Próxima ejecución de scraping programada en 24 horas.")
-
-
-@router.get("/scrapy/feeds/discover")
-async def start_scraping_scheduler() -> dict[str, str]:
-    """
-    Inicia el scraping en segundo plano, y lo programa para ejecutarse cada 24 horas.
-    """
-    threading.Thread(
-        target=background_scraping_every,
-        daemon=True
-    ).start()
-
-    logger.info("Scheduler] Scraping programado para ejecutarse cada 24 horas.")
-    return {"message": "Scraping iniciado. Se repetirá automáticamente cada 24 horas."}

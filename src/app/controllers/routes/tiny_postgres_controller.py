@@ -2,29 +2,32 @@
 # <antoniollorentecuenca@gmail.com>
 # @ Project: Cebolla
 # @ Create Time: 2025-05-05 10:30:50
-# @ Modified time: 2025-09-06 16:17:59
+# @ Modified time: 2025-06-02 16:17:59
 # @ Description:
 # This FastAPI router provides endpoints for managing and retrieving RSS feed
-# metadata using a PostgreSQL backend. The router supports the following
-# operations:
+# metadata stored in a PostgreSQL database. It supports:
 #
-# 1. `GET /search-and-insert-rss`: Reads a list of URLs from a local file,
-# extracts valid RSS feeds using a scraping routine, and stores the
-# resulting metadata (such as feed title and site URL) in the PostgreSQL
-# database.
+# 1. `GET /search-and-insert-rss`: Initiates a background thread that periodically
+#    (every 25 hours) reads a list of URLs from a local file, extracts valid RSS feeds
+#    by scraping those URLs asynchronously, and stores the extracted feed metadata
+#    (such as feed title, site URL, and other relevant information) in the database.
+#    This process runs independently from the main event loop, preventing blocking
+#    of the FastAPI server.
 #
-# 2. `GET /feeds`: Retrieves a list of RSS feeds stored in the database,
-# allowing clients to specify a limit on the number of results returned
-# (default: 10).
+# 2. `GET /feeds`: Retrieves a list of stored RSS feeds from the PostgreSQL database,
+#    supporting a `limit` query parameter to control the number of results returned
+#    (default is 10, with limits between 1 and 100).
 #
-# The module is designed for efficient, asynchronous interaction with the
-# database and serves as part of a larger system to collect and organize
-# cybersecurity-related feed sources.
-
-
+# The module leverages asynchronous database interactions for efficient queries,
+# combined with a safe threading approach to perform periodic background scraping
+# without affecting the responsiveness of the API server.
+#
+# This setup is designed to facilitate automated, ongoing collection and organization
+# of cybersecurity-related RSS feed sources.
 import asyncio
 import os
 import threading
+import time
 from fastapi import APIRouter, Request, HTTPException
 from app.scraping.sipder_rss import extract_rss_and_save
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -48,7 +51,40 @@ router = APIRouter(
     },
 )
 
-def background_rss_process_every(pool, file_path: str, loop: asyncio.AbstractEventLoop):
+
+@router.get("/search-and-insert-rss")
+async def search_and_insert_rss(request: Request):
+    """
+    Starts the background process that runs RSS extraction every 25 hours.
+
+    Args:
+        request (Request): Incoming HTTP request object.
+
+    Returns:
+        dict: Message confirming that the background process has started.
+
+    Raises:
+        HTTPException: If the URL file is not found.
+    """
+    pool = request.app.state.pool
+    file_path = "src/data/urls_cybersecurity_ot_it.txt"
+
+    if not os.path.exists(file_path):
+        logger.warning("[Startup] URL file not found. Aborting scheduler.")
+        raise HTTPException(status_code=404, detail="URL file not found")
+
+    loop = asyncio.get_running_loop()
+
+    threading.Thread(
+        target=background_rss_process_loop,
+        args=(pool, file_path, loop),
+        daemon=True
+    ).start()
+
+    logger.info("[Scheduler] Recurring RSS extraction task initialized.")
+    return {"message": "Background process started. It will run every 25 hours."}
+
+def background_rss_process_loop(pool, file_path: str, loop: asyncio.AbstractEventLoop):
     """
     Executes the RSS extraction and saving task, then schedules the next execution in 25 hours.
 
@@ -59,93 +95,16 @@ def background_rss_process_every(pool, file_path: str, loop: asyncio.AbstractEve
     """
     async def run_task():
         try:
-            logger.info("🔍 [RSS] Starting RSS feed extraction and saving...")
+            logger.info("[RSS] Starting RSS feed extraction and saving...")
             await extract_rss_and_save(pool, file_path)
             logger.success("[RSS] RSS feed extraction and saving completed.")
         except Exception as e:
             logger.error(f"[RSS] Error during RSS extraction and saving: {e}")
 
-    # Ejecuta la corrutina en el loop principal de asyncio de forma segura desde otro hilo
-    asyncio.run_coroutine_threadsafe(run_task(), loop)
-
-    # Programa la siguiente ejecución en 25 horas (90000 segundos)
-    timer = threading.Timer(300, background_rss_process_every, args=(pool, file_path, loop))
-    timer.daemon = True
-    timer.start()
-    logger.info("[Scheduler] Next RSS extraction scheduled in 25 hours.")
-
-
-
-@router.get("/search-and-insert-rss")
-async def search_and_insert_rss(request: Request):
-    """
-    Starts the background process that runs RSS extraction every 25 hours.
-
-    Args:
-        request (Request): Incoming HTTP request object.
-
-    Returns:
-        dict: Message confirming that the background process has started.
-
-    Raises:
-        HTTPException: If the URL file is not found.
-    """
-    pool = request.app.state.pool
-    file_path = "src/data/urls_cybersecurity_ot_it.txt"
-
-    if not os.path.exists(file_path):
-        logger.warning("[Startup] URL file not found. Aborting scheduler.")
-        raise HTTPException(
-            status_code=404,
-            detail="URL file not found"
-        )
-
-    loop = asyncio.get_running_loop()
-
-    threading.Thread(
-        target=background_rss_process_every,
-        args=(pool, file_path, loop),
-        daemon=True
-    ).start()
-
-    logger.info("[Scheduler] Recurring RSS extraction task initialized.")
-    return {"message": "Background process started. It will run every 25 hours."}
-
-
-@router.get("/search-and-insert-rss")
-async def search_and_insert_rss(request: Request):
-    """
-    Starts the background process that runs RSS extraction every 25 hours.
-
-    Args:
-        request (Request): Incoming HTTP request object.
-
-    Returns:
-        dict: Message confirming that the background process has started.
-
-    Raises:
-        HTTPException: If the URL file is not found.
-    """
-    pool = request.app.state.pool
-    file_path = "src/data/urls_cybersecurity_ot_it.txt"
-
-    if not os.path.exists(file_path):
-        logger.warning("[Startup] URL file not found. Aborting scheduler.")
-        raise HTTPException(
-            status_code=404,
-            detail="URL file not found"
-        )
-
-    threading.Thread(
-        target=background_rss_process_every,
-        args=(pool, file_path),
-        daemon=True
-    ).start()
-
-    logger.info("[Scheduler] Recurring RSS extraction task initialized.")
-    return {"message": "Background process started. It will run every 25 hours."}
-
-
+    while True:
+        asyncio.run_coroutine_threadsafe(run_task(), loop)
+        logger.info("[Scheduler] Next RSS extraction scheduled in 25 hours.")
+        time.sleep(90000)
 
 
 @router.get("/feeds", response_model=List[FeedResponse])

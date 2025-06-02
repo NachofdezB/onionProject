@@ -3,7 +3,6 @@
 ## \details Este endpoint permite leer un archivo `result.json`, procesarlo para extraer entidades nombradas
 ## y devolver un archivo `etiquetas_resultado.json` generado automáticamente.
 ## \author Stefan Stan
-
 import os
 import threading
 from fastapi import APIRouter, HTTPException
@@ -29,7 +28,7 @@ def background_process_every_24h(input_path: str, output_path: str):
         output_path (str): Path to save the output file with extracted SpaCy labels.
     """
     try:
-        logger.info("🔍 [SpaCy] Starting entity labeling on result.json...")
+        logger.info("[SpaCy] Starting entity labeling on result.json...")
         process_json(input_path, output_path)
         logger.success("[SpaCy] Entity labeling completed. Output saved to labels_result.json")
     except Exception as e:
@@ -69,5 +68,5 @@ async def start_background_loop():
         daemon=True
     ).start()
 
-    logger.info("🚀 [Scheduler] SpaCy recurring labeling task initialized.")
+    logger.info("Scheduler] SpaCy recurring labeling task initialized.")
     return {"message": "Background process started. Will re-run every 24 hours."}

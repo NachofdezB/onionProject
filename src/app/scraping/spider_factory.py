@@ -234,5 +234,5 @@ async def run_dynamic_spider_from_db(pool) -> Coroutine[Any, Any, None]:
                 #p.join()  # Optional: uncomment if you want to wait for spider to finish before continuing
 
         logger.info("Waiting for next run...")
-        await asyncio.sleep(180)
+        await asyncio.sleep(93600)
         number+=1

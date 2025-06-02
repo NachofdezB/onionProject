@@ -1,27 +1,23 @@
+import logging
+import random
+import re
+from time import sleep
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-from time import sleep
-import random
-import re
-import logging
 
 OUTPUT_FILE = "src/data/urls_cybersecurity_ot_it.txt"
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-    "(KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 ]
 
 DORKS = [
-    # Inglés
     'inurl:rss cybersecurity',
     'inurl:feed "ot security"',
     'filetype:xml "industrial control systems"',
@@ -29,7 +25,6 @@ DORKS = [
     'inurl:feed "ics security"',
     'site:.gov "cisa alert" inurl:feed',
     'site:.org "ot cybersecurity" inurl:rss',
-    # Español
     'inurl:rss ciberseguridad',
     'inurl:feed "seguridad OT"',
     'filetype:xml "sistemas de control industrial"',
@@ -41,13 +36,14 @@ DORKS = [
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
+
 def simulate_human_behavior(driver):
-    """Scrolls and pauses to mimic human browsing behavior."""
     actions = ActionChains(driver)
     for _ in range(random.randint(2, 5)):
         driver.execute_script("window.scrollBy(0, window.innerHeight/2);")
         sleep(random.uniform(1, 3))
     sleep(random.uniform(2, 5))
+
 
 def search_feeds_google_selenium(query, max_results=20, pages=2):
     user_agent = random.choice(USER_AGENTS)
@@ -76,13 +72,13 @@ def search_feeds_google_selenium(query, max_results=20, pages=2):
                     break
 
             sleep(random.uniform(2, 5))
-
     except Exception as e:
-        logging.error(f"Error search whit query '{query}': {e}")
+        logging.error(f"[Scraper] Error in query '{query}': {e}")
     finally:
         driver.quit()
 
     return results
+
 
 def save_to_file(urls, path=OUTPUT_FILE):
     existing_urls = set()
@@ -97,21 +93,22 @@ def save_to_file(urls, path=OUTPUT_FILE):
         with open(path, "a", encoding="utf-8") as f:
             for url in new_urls:
                 f.write(url + "\n")
-        logging.info(f"Saves {len(new_urls)} news URLs in {path}")
+        logging.info(f"[Scraper] Saved {len(new_urls)} new URLs in {path}")
     else:
-        logging.info("No new URLs found to save.")
+        logging.info("[Scraper] No new URLs found to save.")
 
-def run_dorks_continuously(sleep_between_loops=(60*30, 60*90)):  # entre 30 y 90 min
-    while True:
-        total_urls = set()
-        random.shuffle(DORKS)  # Evita patrón fijo
-        for dork in DORKS:
-            logging.info(f"Running dork: {dork}")
-            urls = search_feeds_google_selenium(dork)
-            total_urls.update(urls)
-            sleep(random.uniform(10, 20))  # Espera entre dorks
 
-        save_to_file(total_urls)
-        pause = random.uniform(*sleep_between_loops)
-        logging.info(f"Waiting  {int(pause // 60)} minutes before the next cycle...")
-        sleep(pause)
+# ✅ Main function to be triggered once (repeated externally every 24h)
+async def run_dorks_once():
+    logging.info("[Scraper] Starting dorks scraping cycle...")
+    total_urls = set()
+    random.shuffle(DORKS)
+
+    for dork in DORKS:
+        logging.info(f"[Scraper] Running dork: {dork}")
+        urls = search_feeds_google_selenium(dork)
+        total_urls.update(urls)
+        sleep(random.uniform(10, 20))  # Wait between dorks to avoid bans
+
+    save_to_file(total_urls)
+    logging.info("[Scraper] Dorks scraping cycle finished.")
