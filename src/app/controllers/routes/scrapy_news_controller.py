@@ -25,7 +25,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from app.models.pydantic import FeedUrlRequest, SaveLinkResponse
-from app.scraping.feeds_gd import run_dorks_continuously
+from app.scraping.feeds_gd import run_dork_search_feed
+from app.scraping.news_gd import run_news_search
 from app.scraping.spider_factory import run_dynamic_spider_from_db
 from loguru import logger
 import threading
@@ -125,7 +126,7 @@ async def scrape_news_articles(request: Request) -> dict[str, str]:
         )
 
 
-@router.get("/start-google-alerts-scheduler")
+@router.get("/start-google-alerts")
 async def start_google_alert_scheduler(request: Request) -> JSONResponse:
     """
     @brief Starts the recurring Google Alerts scraping scheduler.
@@ -201,60 +202,98 @@ def recurring_google_alert_scraper(loop: asyncio.AbstractEventLoop) -> None:
     logger.info("[Scheduler] Próxima actualización de feeds en 24h")
 
 
-@router.get("/scrapy/feeds/discover")
-async def start_scraping_scheduler(request: Request) -> dict[str, str]:
+@router.get("/scrapy/google-dk/feeds")
+async def start_scraping_feeds(request: Request) -> dict[str, str]:
     """
-    @brief Starts a recurring background task to scrape feeds using predefined dorks.
+    Starts the scraping task in a separate thread which runs immediately
+    and reschedules itself every 24 hours.
 
-    @details
-    This endpoint launches a background thread that:
-    - Executes the `run_dorks_continuously()` scraping routine.
-    - Reschedules itself to repeat the scraping every 24 hours (86400 seconds).
-    - Runs asynchronously and does not block the main FastAPI event loop.
-
-    @param request: FastAPI request object, required to access the event loop.
-
-    @return dict[str, str]: Status message indicating the scheduler has started.
+    @param request: FastAPI request object.
+    @return: A dictionary with a status message indicating that scraping has started.
     """
     loop = asyncio.get_running_loop()
 
     threading.Thread(
-        target=background_scraping_every,
+        target=background_scraping_feeds,
         args=(loop,),
         daemon=True
     ).start()
 
-    logger.info("[Scheduler] Scraping programado para ejecutarse cada 24 horas.")
-    return {"message": "Scraping iniciado. Se repetirá automáticamente cada 24 horas."}
+    return {"message": "Scraping iniciado. Se ejecutará y reprogramará cada 24 horas."}
 
-
-def background_scraping_every(loop: asyncio.AbstractEventLoop) -> None:
+def background_scraping_feeds(loop: asyncio.AbstractEventLoop) -> None:
     """
-    @brief Executes the dorks-based scraping task and reschedules itself every 24 hours.
+    Executes the Google Dorking scraping task asynchronously and reschedules
+    itself to run again every 24 hours (86400 seconds).
 
-    @details
-    - This function is intended to run in a separate daemon thread.
-    - It uses the provided event loop to run the async scraping function
-      `run_dorks_continuously()` inside a thread-safe coroutine context.
-    - After the scraping is completed (or an error occurs), it sets a timer to
-      call itself again after 86400 seconds (24 hours).
+    This function is intended to be run in a separate daemon thread. It schedules
+    the asynchronous `run_scraping()` coroutine in the provided event loop
+    in a thread-safe manner.
 
-    @param loop: The main asyncio event loop to safely run asynchronous scraping logic from a thread.
-
-    @return None
+    @param loop: The main asyncio event loop to run the async scraping task.
+    @return: None
     """
     try:
-        logger.info("🔍 [Scraper] Iniciando scraping con run_dorks_continuously()...")
-        # Si run_dorks_continuously es async, llama así:
-        future = asyncio.run_coroutine_threadsafe(run_dorks_continuously(), loop)
-        future.result()  # espera a que termine (opcional)
-
-        logger.success("[Scraper] Scraping completado.")
+        logger.info("[Scraper] Starting Google Dorking tasks with run_scraping()...")
+        future = asyncio.run_coroutine_threadsafe(run_dork_search_feed(), loop)
+        future.result()
+        logger.success("[Scraper] Google Dorking tasks completed.")
     except Exception as e:
-        logger.error(f"[Scraper] Error durante el scraping: {e}")
+        logger.error(f"[Scraper] Error during Google Dorking tasks: {e}")
 
-    # Reprogramar ejecución dentro de 24 horas (86400 segundos)
-    timer = threading.Timer(86400, background_scraping_every, args=(loop,))
-    timer.daemon = True
-    timer.start()
-    logger.info("[Scheduler] Próxima ejecución de scraping programada en 24 horas.")
+    try:
+        timer = threading.Timer(86400, background_scraping_feeds, args=(loop,))
+        timer.daemon = True
+        timer.start()
+        logger.info("[Scheduler] Next scraping execution scheduled in 24 hours.")
+    except Exception as e:
+        logger.error(f"[Scheduler] Error rescheduling scraping: {e}")
+
+
+@router.get("/scrapy/google-dk/news")
+async def start_scraping_news(request: Request) -> dict[str, str]:
+    """
+    Starts the scraping task in a separate thread which runs immediately
+    and reschedules itself every 24 hours.
+
+    @param request: FastAPI request object.
+    @return: A dictionary with a status message indicating that scraping has started.
+    """
+    loop = asyncio.get_running_loop()
+
+    threading.Thread(
+        target=background_scraping_news,
+        args=(loop,),
+        daemon=True
+    ).start()
+
+    return {"message": "Scraping iniciado. Se ejecutará y reprogramará cada 24 horas."}
+
+def background_scraping_news(loop: asyncio.AbstractEventLoop) -> None:
+    """
+    Executes the Google Dorking scraping task asynchronously and reschedules
+    itself to run again every 24 hours (86400 seconds).
+
+    This function is intended to be run in a separate daemon thread. It schedules
+    the asynchronous `run_scraping()` coroutine in the provided event loop
+    in a thread-safe manner.
+
+    @param loop: The main asyncio event loop to run the async scraping task.
+    @return: None
+    """
+    try:
+        logger.info("[Scraper] Starting Google Dorking tasks with run_scraping()...")
+        future = asyncio.run_coroutine_threadsafe(run_news_search(), loop)
+        future.result()
+        logger.success("[Scraper] Google Dorking tasks completed.")
+    except Exception as e:
+        logger.error(f"[Scraper] Error during Google Dorking tasks: {e}")
+
+    try:
+        timer = threading.Timer(86400, background_scraping_news, args=(loop,))
+        timer.daemon = True
+        timer.start()
+        logger.info("[Scheduler] Next scraping execution scheduled in 24 hours.")
+    except Exception as e:
+        logger.error(f"[Scheduler] Error rescheduling scraping: {e}")
+

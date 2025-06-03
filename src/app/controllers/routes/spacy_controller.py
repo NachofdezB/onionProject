@@ -19,29 +19,7 @@ router = APIRouter(
 )
 
 
-def background_process_every_24h(input_path: str, output_path: str):
-    """
-    Executes the JSON NLP processing task and schedules the next execution after 24 hours.
-
-    Args:
-        input_path (str): Path to the input JSON file with raw news/texts.
-        output_path (str): Path to save the output file with extracted SpaCy labels.
-    """
-    try:
-        logger.info("[SpaCy] Starting entity labeling on result.json...")
-        process_json(input_path, output_path)
-        logger.success("[SpaCy] Entity labeling completed. Output saved to labels_result.json")
-    except Exception as e:
-        logger.error(f"[SpaCy] Error while labeling entities: {e}")
-
-    # Schedule next execution in 24 hours
-    timer = threading.Timer(86400, background_process_every_24h, args=(input_path, output_path))
-    timer.daemon = True
-    timer.start()
-    logger.info("[Scheduler] Next SpaCy entity labeling scheduled in 24 hours.")
-
-
-@router.get("/start-spacy-scheduler")
+@router.get("/start-spacy")
 async def start_background_loop():
     """
     Manually starts the recurring SpaCy processing job every 24 hours in the background.
@@ -70,3 +48,25 @@ async def start_background_loop():
 
     logger.info("Scheduler] SpaCy recurring labeling task initialized.")
     return {"message": "Background process started. Will re-run every 24 hours."}
+
+
+def background_process_every_24h(input_path: str, output_path: str):
+    """
+    Executes the JSON NLP processing task and schedules the next execution after 24 hours.
+
+    Args:
+        input_path (str): Path to the input JSON file with raw news/texts.
+        output_path (str): Path to save the output file with extracted SpaCy labels.
+    """
+    try:
+        logger.info("[SpaCy] Starting entity labeling on result.json...")
+        process_json(input_path, output_path)
+        logger.success("[SpaCy] Entity labeling completed. Output saved to labels_result.json")
+    except Exception as e:
+        logger.error(f"[SpaCy] Error while labeling entities: {e}")
+
+    # Schedule next execution in 24 hours
+    timer = threading.Timer(86400, background_process_every_24h, args=(input_path, output_path))
+    timer.daemon = True
+    timer.start()
+    logger.info("[Scheduler] Next SpaCy entity labeling scheduled in 24 hours.")
