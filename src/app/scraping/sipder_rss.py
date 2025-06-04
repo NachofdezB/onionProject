@@ -4,20 +4,26 @@
 # @ Modified time: 2025-05-09 20:39:59
 # @ Project: Cebolla
 # @ Description:
-# This module implements a dynamic Scrapy spider designed to extract RSS and Atom feed
-# URLs from a given list of websites. It leverages the feedparser library to parse feed
-# metadata such as titles and site URLs, and stores valid feeds asynchronously into a
-# PostgreSQL database using asyncpg.
+# This module implements a dynamic Scrapy spider designed to extract RSS and
+# Atom feed
+# URLs from a given list of websites. It leverages the feedparser library to
+# parse feed metadata such as titles and site URLs, and stores valid feeds
+# asynchronously into a PostgreSQL database using asyncpg.
 #
 # Key functionalities include:
 # - Reading URLs from a local file to scan for RSS feeds.
-# - Dynamically creating and running a Scrapy spider that detects RSS/Atom/XML feeds via <link> tags.
-# - Running the spider asynchronously with multiprocessing to handle multiple URLs concurrently.
+# - Dynamically creating and running a Scrapy spider that detects RSS/Atom/XML
+# feeds via <link> tags.
+# - Running the spider asynchronously with multiprocessing to handle multiple
+# URLs concurrently.
 # - Parsing each discovered feed to extract essential metadata.
-# - Inserting extracted feed data into the PostgreSQL database with proper error handling.
-# - Configurable crawling settings with retry mechanisms and polite crawling delays.
+# - Inserting extracted feed data into the PostgreSQL database with proper
+# error handling.
+# - Configurable crawling settings with retry mechanisms and polite crawling
+# delays.
 #
-# This module supports scalable and efficient feed discovery and ingestion for the Cebolla project.
+# This module supports scalable and efficient feed discovery and ingestion for
+# the Cebolla project.
 
 
 import feedparser
@@ -126,21 +132,25 @@ def run_rss_spider(urls, queue) -> None:
 
 async def extract_rss_and_save(pool, file_path) -> None:
     """
-    Extracts RSS/Atom feed URLs from a list of websites and stores valid feeds in a PostgreSQL database.
+    Extracts RSS/Atom feed URLs from a list of websites and stores valid feeds
+    in a PostgreSQL database.
 
     This function:
     - Reads website URLs from a local file.
-    - Uses a multiprocessing Scrapy spider to discover RSS/Atom feeds from those websites.
+    - Uses a multiprocessing Scrapy spider to discover RSS/Atom feeds from
+      those websites.
     - Parses each discovered feed using `feedparser`.
     - Extracts metadata such as the title and site URL.
-    - Constructs a `FeedCreateRequest` and inserts the feed into the database via `insert_feed_to_db`.
+    - Constructs a `FeedCreateRequest` and inserts the feed into the database
+    via `insert_feed_to_db`.
 
     Args:
         pool: An `asyncpg.pool.Pool` object used to acquire database connections.
         file_path (str): The file path containing a list of website URLs to process.
 
     Returns:
-        Coroutine[Any, Any, None]: An asynchronous coroutine that performs the feed extraction and saving process.
+        Coroutine[Any, Any, None]: An asynchronous coroutine that performs the
+        feed extraction and saving process.
     """
     urls = read_urls_from_file(file_path)
     if not urls:

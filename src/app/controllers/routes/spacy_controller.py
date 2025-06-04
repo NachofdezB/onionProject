@@ -1,12 +1,14 @@
 ## \file etiquetas_api.py
-## \brief API REST para procesar un archivo JSON de texto usando análisis de entidades con spaCy.
-## \details Este endpoint permite leer un archivo `result.json`, procesarlo para extraer entidades nombradas
-## y devolver un archivo `etiquetas_resultado.json` generado automáticamente.
+## \brief REST API to process a JSON file using entity analysis with spaCy.
+## \details This endpoint reads a `result.json` file, processes it to extract named entities,
+## and returns a generated `labels_result.json` file.
 ## \author Stefan Stan
+
 import os
 import threading
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+
 from app.spacy.text_processor import process_json
 
 router = APIRouter(
@@ -14,7 +16,7 @@ router = APIRouter(
     responses={
         200: {"description": "Processed file returned successfully"},
         404: {"description": "Input file result.json not found"},
-        500: {"description": "Failed to generate output file etiquetas_resultado.json"}
+        500: {"description": "Failed to generate output file labels_result.json"}
     }
 )
 
@@ -46,7 +48,7 @@ async def start_background_loop():
         daemon=True
     ).start()
 
-    logger.info("Scheduler] SpaCy recurring labeling task initialized.")
+    logger.info("[Scheduler] SpaCy recurring labeling task initialized.")
     return {"message": "Background process started. Will re-run every 24 hours."}
 
 

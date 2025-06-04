@@ -58,7 +58,8 @@ async def extract_news_structure(url: str) -> Optional[Dict]:
     and metadata. Only returns the result if it's considered relevant.
 
     @param url: URL of the article.
-    @return: Dictionary containing article metadata or None if irrelevant or error occurs.
+    @return: Dictionary containing article metadata or None if irrelevant or
+    error occurs.
     '''
     try:
         async with httpx.AsyncClient(
